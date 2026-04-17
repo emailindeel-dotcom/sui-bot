@@ -151,4 +151,7 @@ def run_bot():
 
         time.sleep(60 * 15)
 
+if __name__ == "__main__":
+    run_bot()
+
 
