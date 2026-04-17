@@ -26,22 +26,19 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    markets = requests.get(f"{BASE_URL}/exchange/v1/markets_details").json()
-    pair_data = [m for m in markets if m['coindcx_name'] == PAIR][0]
-    symbol = pair_data['symbol']
+    symbol = "SUIINR"
 
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     data = requests.get(url).json()
 
-    df = pd.DataFrame(data)
+    if not data:
+        print("No candle data")
+        return None
 
-    df = df.rename(columns={
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "Volume"
-    })
+    # Handle list format
+    df = pd.DataFrame(data, columns=[
+        "timestamp", "Open", "High", "Low", "Close", "Volume"
+    ])
 
     df["Close"] = df["Close"].astype(float)
     df["High"] = df["High"].astype(float)
