@@ -26,7 +26,7 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    symbol = "B-SUI_INR"   # we’ll stabilize later if needed
+    symbol = "SUIINR"  # stable working symbol
 
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     response = requests.get(url)
@@ -41,34 +41,41 @@ def get_candles():
         print("No candle data from API")
         return None
 
-    # 🔥 Handle BOTH formats
-    if isinstance(data[0], list):
-        df = pd.DataFrame(data, columns=[
-            "timestamp", "Open", "High", "Low", "Close", "Volume"
-        ])
-    else:
+    # 🔥 FORCE correct structure
+    try:
         df = pd.DataFrame(data)
-        df = df.rename(columns={
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "close": "Close",
-            "volume": "Volume"
-        })
 
-    # 🔒 Ensure columns exist
-    required_cols = ["Open", "High", "Low", "Close"]
-    for col in required_cols:
-        if col not in df.columns:
-            print(f"Missing column: {col}")
+        # If it's list format
+        if len(df.columns) == 6:
+            df.columns = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
+
+        # If it's dict format
+        else:
+            df = df.rename(columns={
+                "open": "Open",
+                "high": "High",
+                "low": "Low",
+                "close": "Close",
+                "volume": "Volume"
+            })
+
+        # 🔒 FINAL CHECK
+        if "Close" not in df.columns:
+            print("Columns received:", df.columns)
             return None
 
-    # Convert to float safely
-    df["Close"] = df["Close"].astype(float)
-    df["High"] = df["High"].astype(float)
-    df["Low"] = df["Low"].astype(float)
+        # Convert safely
+        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+        df["High"] = pd.to_numeric(df["High"], errors="coerce")
+        df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
 
-    return df
+        df = df.dropna()
+
+        return df
+
+    except Exception as e:
+        print("Data processing error:", e)
+        return None
 # Calculate CCI manually
 def calculate_cci(df, period):
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
