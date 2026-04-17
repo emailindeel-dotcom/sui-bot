@@ -26,8 +26,20 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    symbol = "B-SUI_INR"
+    # Step 1: Get markets
+    markets = requests.get("https://api.coindcx.com/exchange/v1/markets_details").json()
 
+    # Step 2: Find correct symbol for SUI/INR
+    pair_data = next((m for m in markets if "SUI" in m['symbol'] and "INR" in m['symbol']), None)
+
+    if pair_data is None:
+        print("SUI/INR pair not found")
+        return None
+
+    symbol = pair_data['symbol']
+    print("Using symbol:", symbol)
+
+    # Step 3: Fetch candles
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     response = requests.get(url)
 
@@ -37,10 +49,11 @@ def get_candles():
 
     data = response.json()
 
-    if not data or len(data) == 0:
-        print("No candle data from API")
+    if not data:
+        print("No candle data from API for:", symbol)
         return None
 
+    # Step 4: Convert to DataFrame
     df = pd.DataFrame(data, columns=[
         "timestamp", "Open", "High", "Low", "Close", "Volume"
     ])
