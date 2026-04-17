@@ -29,13 +29,18 @@ def get_candles():
     symbol = "SUIINR"
 
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
-    data = requests.get(url).json()
+    response = requests.get(url)
 
-    if not data:
-        print("No candle data")
+    if response.status_code != 200:
+        print("API error:", response.status_code)
         return None
 
-    # Handle list format
+    data = response.json()
+
+    if not data or len(data) == 0:
+        print("No candle data from API")
+        return None
+
     df = pd.DataFrame(data, columns=[
         "timestamp", "Open", "High", "Low", "Close", "Volume"
     ])
