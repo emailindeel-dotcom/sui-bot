@@ -29,7 +29,7 @@ def get_candles():
     url = "https://public.coindcx.com/market_data/candles"
 
     params = {
-        "pair": "BTCINR",   # ✅ USE THIS FIRST (stable)
+        "pair": "BTCINR",
         "interval": "15m",
         "limit": 1000
     }
@@ -43,36 +43,24 @@ def get_candles():
     data = response.json()
 
     if not data:
-        print("No candle data from API")
+        print("No candle data")
         return None
 
-    try:
-        # Force correct structure
-        df = pd.DataFrame(data)
+    df = pd.DataFrame(data)
 
-        # If list format
-        if len(df.columns) == 6:
-            df.columns = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
-        else:
-            print("Unexpected format:", df.columns)
-            return None
-
-        # Convert safely
-        df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
-        df["High"] = pd.to_numeric(df["High"], errors="coerce")
-        df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
-
-        df = df.dropna()
-
-        return df
-
-    except Exception as e:
-        print("Processing error:", e)
+    if len(df.columns) != 6:
+        print("Wrong format:", df.columns)
         return None
 
-    except Exception as e:
-        print("Data processing error:", e)
-        return None
+    df.columns = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
+
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df["High"] = pd.to_numeric(df["High"], errors="coerce")
+    df["Low"] = pd.to_numeric(df["Low"], errors="coerce")
+
+    df = df.dropna()
+
+    return df
 # Calculate CCI manually
 def calculate_cci(df, period):
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
@@ -83,9 +71,6 @@ def calculate_cci(df, period):
 
 # Signal Logic
 def generate_signal(df):
-    if len(df) < 600:
-        return None
-
     df["CCI"] = calculate_cci(df, 525)
     df["CCI_SMA"] = df["CCI"].rolling(475).mean()
 
@@ -133,35 +118,30 @@ def place_order(side, quantity):
 
 # Main bot loop
 def run_bot():
-    global position, last_trade_time
-
     print("Bot Started...")
 
     while True:
         try:
             df = get_candles()
-            signal = generate_signal(df)
 
-            current_price = df.iloc[-1]["Close"]
-            quantity = TRADE_AMOUNT / current_price
-
-            # Cooldown (45 min)
-            if time.time() - last_trade_time < 2700:
-                print("Cooldown active...")
+            # ✅ STOP if no data
+            if df is None:
+                print("No data, skipping...")
                 time.sleep(60)
                 continue
 
-            if signal == "BUY" and position != "LONG":
-                print("BUY SIGNAL")
-                place_order("buy", quantity)
-                position = "LONG"
-                last_trade_time = time.time()
+            if df.empty:
+                print("Empty data, skipping...")
+                time.sleep(60)
+                continue
 
-            elif signal == "SELL" and position != "SHORT":
+            signal = generate_signal(df)
+
+            if signal == "BUY":
+                print("BUY SIGNAL")
+
+            elif signal == "SELL":
                 print("SELL SIGNAL")
-                place_order("sell", quantity)
-                position = "SHORT"
-                last_trade_time = time.time()
 
             else:
                 print("No signal")
@@ -169,9 +149,6 @@ def run_bot():
         except Exception as e:
             print("Error:", e)
 
+        time.sleep(60 * 15)
 
-        time.sleep(60 * 15)  # 15 min candle
 
-# Start bot
-if __name__ == "__main__":
-    run_bot()
