@@ -26,10 +26,15 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    symbol = "ETHINR"  # stable working symbol
+    url = "https://public.coindcx.com/market_data/candles"
 
-    url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
-    response = requests.get(url)
+    params = {
+        "pair": "BTCINR",   # ✅ USE THIS FIRST (stable)
+        "interval": "15m",
+        "limit": 1000
+    }
+
+    response = requests.get(url, params=params)
 
     if response.status_code != 200:
         print("API error:", response.status_code)
@@ -41,27 +46,15 @@ def get_candles():
         print("No candle data from API")
         return None
 
-    # 🔥 FORCE correct structure
     try:
+        # Force correct structure
         df = pd.DataFrame(data)
 
-        # If it's list format
+        # If list format
         if len(df.columns) == 6:
             df.columns = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
-
-        # If it's dict format
         else:
-            df = df.rename(columns={
-                "open": "Open",
-                "high": "High",
-                "low": "Low",
-                "close": "Close",
-                "volume": "Volume"
-            })
-
-        # 🔒 FINAL CHECK
-        if "Close" not in df.columns:
-            print("Columns received:", df.columns)
+            print("Unexpected format:", df.columns)
             return None
 
         # Convert safely
@@ -72,6 +65,10 @@ def get_candles():
         df = df.dropna()
 
         return df
+
+    except Exception as e:
+        print("Processing error:", e)
+        return None
 
     except Exception as e:
         print("Data processing error:", e)
