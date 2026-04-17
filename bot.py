@@ -26,7 +26,7 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    symbol = "SUIINR"  # stable working symbol
+    symbol = "B-SUI_INR"  # stable working symbol
 
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     response = requests.get(url)
