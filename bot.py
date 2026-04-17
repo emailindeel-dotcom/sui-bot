@@ -26,20 +26,8 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    # Step 1: Get markets
-    markets = requests.get("https://api.coindcx.com/exchange/v1/markets_details").json()
+    symbol = "B-SUI_INR"   # we’ll stabilize later if needed
 
-    # Step 2: Find correct symbol for SUI/INR
-    pair_data = next((m for m in markets if "SUI" in m['symbol'] and "INR" in m['symbol']), None)
-
-    if pair_data is None:
-        print("SUI/INR pair not found")
-        return None
-
-    symbol = pair_data['symbol']
-    print("Using symbol:", symbol)
-
-    # Step 3: Fetch candles
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     response = requests.get(url)
 
@@ -50,20 +38,37 @@ def get_candles():
     data = response.json()
 
     if not data:
-        print("No candle data from API for:", symbol)
+        print("No candle data from API")
         return None
 
-    # Step 4: Convert to DataFrame
-    df = pd.DataFrame(data, columns=[
-        "timestamp", "Open", "High", "Low", "Close", "Volume"
-    ])
+    # 🔥 Handle BOTH formats
+    if isinstance(data[0], list):
+        df = pd.DataFrame(data, columns=[
+            "timestamp", "Open", "High", "Low", "Close", "Volume"
+        ])
+    else:
+        df = pd.DataFrame(data)
+        df = df.rename(columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume"
+        })
 
+    # 🔒 Ensure columns exist
+    required_cols = ["Open", "High", "Low", "Close"]
+    for col in required_cols:
+        if col not in df.columns:
+            print(f"Missing column: {col}")
+            return None
+
+    # Convert to float safely
     df["Close"] = df["Close"].astype(float)
     df["High"] = df["High"].astype(float)
     df["Low"] = df["Low"].astype(float)
 
     return df
-
 # Calculate CCI manually
 def calculate_cci(df, period):
     tp = (df["High"] + df["Low"] + df["Close"]) / 3
