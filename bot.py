@@ -10,7 +10,7 @@ import os
 API_KEY = "YOUR_API_KEY"
 API_SECRET = b"YOUR_API_SECRET"
 
-PAIR = "SUIINR"
+PAIR = "B-SUI_INR"
 BAR_INTERVAL = "15m"
 TRADE_AMOUNT = 50  # ₹50 per trade
 
@@ -141,6 +141,7 @@ def run_bot():
 
         except Exception as e:
             print("Error:", e)
+
 
         time.sleep(60 * 15)  # 15 min candle
 
