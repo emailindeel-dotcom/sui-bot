@@ -10,7 +10,7 @@ import os
 API_KEY = "YOUR_API_KEY"
 API_SECRET = b"YOUR_API_SECRET"
 
-PAIR = "SUIINR"
+PAIR = "ETHINR"
 BAR_INTERVAL = "15m"
 TRADE_AMOUNT = 50  # ₹50 per trade
 
@@ -26,7 +26,7 @@ def get_signature(payload):
 
 # Fetch candles
 def get_candles():
-    symbol = "SUIINR"  # stable working symbol
+    symbol = "ETHINR"  # stable working symbol
 
     url = f"https://public.coindcx.com/market_data/candles?pair={symbol}&interval={BAR_INTERVAL}"
     response = requests.get(url)
