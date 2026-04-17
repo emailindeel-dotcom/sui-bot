@@ -10,7 +10,7 @@ import os
 API_KEY = "YOUR_API_KEY"
 API_SECRET = b"YOUR_API_SECRET"
 
-PAIR = "B-SUI_INR"
+PAIR = "SUIINR"
 BAR_INTERVAL = "15m"
 TRADE_AMOUNT = 50  # ₹50 per trade
 
