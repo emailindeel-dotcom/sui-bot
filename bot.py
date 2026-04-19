@@ -38,17 +38,47 @@ def get_price(pair="B-SUIINR"):
     return closes
 
 def check_signal():
-    closes = get_price()
-    short_ma = sum(closes[-5:]) / 5
-    long_ma = sum(closes[-20:]) / 20
+    closes, highs, lows, volumes = get_candles()
+    if closes is None:
+        return "ERROR", 0
 
-    if short_ma > long_ma:
-        return "BUY"
-    elif short_ma < long_ma:
-        return "SELL"
+    price     = closes[-1]
+    short_ema = ema(closes[-SHORT_PERIOD*3:], SHORT_PERIOD)
+    long_ema  = ema(closes[-LONG_PERIOD*3:],  LONG_PERIOD)
+    rsi       = calculate_rsi(closes, RSI_PERIOD)
+    macd      = calculate_macd(closes)
+
+    # Calculate difference between EMAs
+    diff    = short_ema - long_ema
+    diff_pct = (diff / long_ema) * 100
+
+    print(f"SUI Price   : {price}")
+    print(f"EMA({SHORT_PERIOD})      : {round(short_ema, 4)}")
+    print(f"EMA({LONG_PERIOD})      : {round(long_ema, 4)}")
+    print(f"EMA Diff %  : {round(diff_pct, 4)}%")
+    print(f"RSI(14)     : {rsi}")
+    print(f"MACD        : {macd}")
+
+    # ── THRESHOLD: even 0.01% difference triggers signal ──
+    THRESHOLD = 0.01
+
+    if diff_pct > THRESHOLD:
+        trend = "BUY"
+    elif diff_pct < -THRESHOLD:
+        trend = "SELL"
     else:
-        return "HOLD"
+        trend = "HOLD"
 
+    # RSI filter
+    if trend == "BUY"  and rsi > 75:
+        trend = "HOLD"  # overbought, skip buy
+    if trend == "SELL" and rsi < 25:
+        trend = "HOLD"  # oversold, skip sell
+
+    print(f"EMA Trend   : {trend}")
+    print(f"RSI Filter  : {'BLOCKED' if (trend == 'HOLD' and rsi > 75) or (trend == 'HOLD' and rsi < 25) else 'PASSED'}")
+
+    return trend, price
 # Main loop
 print("Bot started...")
 while True:
