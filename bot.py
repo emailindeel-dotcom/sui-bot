@@ -79,13 +79,4 @@ def check_signal():
     print(f"RSI Filter  : {'BLOCKED' if (trend == 'HOLD' and rsi > 75) or (trend == 'HOLD' and rsi < 25) else 'PASSED'}")
 
     return trend, price
-# Main loop
-print("Bot started...")
-while True:
-    signal = check_signal()
-    balance = get_balance()
-    print(f"Signal: {signal} | Time: {time.ctime()}")
-    # Uncomment below only after testing:
-    # if signal == "BUY":
-    #     place_order("buy", price, quantity)
-    time.sleep(60)
+
