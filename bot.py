@@ -5,9 +5,30 @@ import json
 import time
 import os
 
-# Paste your keys directly here for phone testing
-API_KEY = "be7077710a52a1fd8568cca583106acd82e2244f7aa7f9af"
-API_SECRET = b"9166de9ff3ddc3454ca8fe1f1acc5649b8feefcf3d552d6e6b64e40d87642e1d"
+# ── API Keys ──
+API_KEY    = os.environ.get("API_KEY", "your_api_key_here")
+API_SECRET = os.environ.get("API_SECRET", "your_secret_here").encode()
+
+# ── Settings ──
+PAIR          = "B-SUI_USDT"
+TRADE_QTY     = 10
+LEVERAGE      = 5
+INTERVAL      = 300        # Check every 5 minutes
+STOP_LOSS_PCT = 1.5
+TP_PCT        = 4.5
+CANDLE_LIMIT  = 100
+
+CANDLE_URL  = f"https://public.coindcx.com/market_data/candles?pair={PAIR}&interval=15m&limit={CANDLE_LIMIT}"
+FUTURES_URL = "https://api.coindcx.com/exchange/v1/derivatives/futures/orders/create"
+
+in_position   = False
+buy_price     = 0.0
+trade_count   = 0
+win_count     = 0
+
+# Track previous EMA state for crossover detection
+prev_ema20    = None
+prev_ema50    = None
 
 def get_signature(json_body):
     return hmac.new(
@@ -16,10 +37,150 @@ def get_signature(json_body):
         hashlib.sha256
     ).hexdigest()
 
-def get_balance():
-    url = "https://api.coindcx.com/exchange/v1/users/balances"
+def calculate_ema(data, period):
+    k       = 2 / (period + 1)
+    ema_val = sum(data[:period]) / period
+    for price in data[period:]:
+        ema_val = price * k + ema_val * (1 - k)
+    return round(ema_val, 6)
+
+def calculate_rsi(closes, period=14):
+    gains  = [max(closes[i]-closes[i-1], 0) for i in range(1, len(closes))]
+    losses = [max(closes[i-1]-closes[i], 0) for i in range(1, len(closes))]
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    if avg_loss == 0:
+        return 100
+    rs  = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 2)
+
+def get_candles():
+    try:
+        r = requests.get(CANDLE_URL, timeout=10)
+        if r.status_code == 200:
+            data    = r.json()
+            closes  = [float(c['close'])  for c in data]
+            volumes = [float(c['volume']) for c in data]
+            return closes, volumes
+        else:
+            print(f"Candle Error: {r.status_code}")
+            return None, None
+    except Exception as e:
+        print(f"Fetch Error: {e}")
+        return None, None
+
+def check_signal():
+    global prev_ema20, prev_ema50
+
+    closes, volumes = get_candles()
+    if closes is None:
+        return "ERROR", 0
+
+    price   = closes[-1]
+    ema20   = calculate_ema(closes, 20)
+    ema50   = calculate_ema(closes, 50)
+    rsi     = calculate_rsi(closes)
+    avg_vol = sum(volumes[-20:]) / 20
+    vol_ratio = round(volumes[-1] / avg_vol, 2)
+
+    # Gap between EMAs as percentage
+    gap_pct = round(((ema20 - ema50) / ema50) * 100, 4)
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(f"  Price      : {price}")
+    print(f"  EMA20      : {ema20}")
+    print(f"  EMA50      : {ema50}")
+    print(f"  EMA Gap    : {gap_pct}%")
+    print(f"  RSI        : {rsi}")
+    print(f"  Volume     : {vol_ratio}x avg")
+
+    # Determine current trend
+    if ema20 > ema50:
+        trend = "BULLISH"
+    else:
+        trend = "BEARISH"
+
+    print(f"  Trend      : {trend}")
+
+    # ── Crossover Detection ──
+    signal = "HOLD"
+
+    if prev_ema20 is not None and prev_ema50 is not None:
+
+        was_below = prev_ema20 <= prev_ema50   # EMA20 was below EMA50
+        now_above = ema20 > ema50              # EMA20 now above EMA50
+        was_above = prev_ema20 >= prev_ema50   # EMA20 was above EMA50
+        now_below = ema20 < ema50              # EMA20 now below EMA50
+
+        # Golden Cross → BUY
+        if was_below and now_above:
+            if rsi < 75:                       # Not overbought
+                signal = "BUY"
+                print(f"  🟢 GOLDEN CROSS DETECTED!")
+
+        # Death Cross → SELL
+        elif was_above and now_below:
+            if rsi > 25:                       # Not oversold
+                signal = "SELL"
+                print(f"  🔴 DEATH CROSS DETECTED!")
+
+        # Already in trend — ride it
+        else:
+            if trend == "BULLISH" and gap_pct > 0.05 and rsi < 70:
+                signal = "BUY"
+            elif trend == "BEARISH" and gap_pct < -0.05 and rsi > 30:
+                signal = "SELL"
+
+    else:
+        # First run — check current trend
+        if trend == "BULLISH" and gap_pct > 0.05 and rsi < 70:
+            signal = "BUY"
+        elif trend == "BEARISH" and gap_pct < -0.05 and rsi > 30:
+            signal = "SELL"
+
+    # Update previous values
+    prev_ema20 = ema20
+    prev_ema50 = ema50
+
+    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    return signal, price
+
+def check_sl_tp(price):
+    global in_position, buy_price, trade_count, win_count
+    if not in_position:
+        return None
+
+    sl  = buy_price * (1 - STOP_LOSS_PCT / 100)
+    tp  = buy_price * (1 + TP_PCT / 100)
+    pnl = round((price - buy_price) / buy_price * 100, 2)
+
+    print(f"  Entry      : {round(buy_price, 4)}")
+    print(f"  Stop Loss  : {round(sl, 4)}")
+    print(f"  Take Profit: {round(tp, 4)}")
+    print(f"  Current PnL: {pnl}%")
+
+    if price <= sl:
+        print("  🔴 STOP LOSS HIT")
+        trade_count += 1
+        return "EXIT_LOSS"
+    if price >= tp:
+        print("  🟢 TAKE PROFIT HIT")
+        trade_count += 1
+        win_count   += 1
+        return "EXIT_WIN"
+    return None
+
+def place_order(side, price):
     timestamp = int(round(time.time() * 1000))
-    body = {"timestamp": timestamp}
+    body = {
+        "timestamp":      timestamp,
+        "side":           side,
+        "pair":           PAIR,
+        "order_type":     "limit",
+        "price":          round(price, 4),
+        "total_quantity": TRADE_QTY,
+        "leverage":       LEVERAGE
+    }
     json_body = json.dumps(body, separators=(',', ':'))
     signature = get_signature(json_body)
     headers = {
@@ -27,56 +188,65 @@ def get_balance():
         'X-AUTH-APIKEY': API_KEY,
         'X-AUTH-SIGNATURE': signature
     }
-    r = requests.post(url, data=json_body, headers=headers)
-    return r.json()
+    r = requests.post(FUTURES_URL, data=json_body, headers=headers)
+    print(f"  Order      : {r.json()}")
 
-def get_price(pair="B-SUIINR"):
-    url = f"https://public.coindcx.com/market_data/candles?pair={pair}&interval=1m&limit=20"
-    r = requests.get(url)
-    data = r.json()
-    closes = [float(c['close']) for c in data]
-    return closes
-
-def check_signal():
-    closes, highs, lows, volumes = get_candles()
-    if closes is None:
-        return "ERROR", 0
-
-    price     = closes[-1]
-    short_ema = ema(closes[-SHORT_PERIOD*3:], SHORT_PERIOD)
-    long_ema  = ema(closes[-LONG_PERIOD*3:],  LONG_PERIOD)
-    rsi       = calculate_rsi(closes, RSI_PERIOD)
-    macd      = calculate_macd(closes)
-
-    # Calculate difference between EMAs
-    diff    = short_ema - long_ema
-    diff_pct = (diff / long_ema) * 100
-
-    print(f"SUI Price   : {price}")
-    print(f"EMA({SHORT_PERIOD})      : {round(short_ema, 4)}")
-    print(f"EMA({LONG_PERIOD})      : {round(long_ema, 4)}")
-    print(f"EMA Diff %  : {round(diff_pct, 4)}%")
-    print(f"RSI(14)     : {rsi}")
-    print(f"MACD        : {macd}")
-
-    # ── THRESHOLD: even 0.01% difference triggers signal ──
-    THRESHOLD = 0.01
-
-    if diff_pct > THRESHOLD:
-        trend = "BUY"
-    elif diff_pct < -THRESHOLD:
-        trend = "SELL"
+def print_stats():
+    print(f"  ── Stats ──────────────────────────")
+    if trade_count > 0:
+        win_rate = round((win_count / trade_count) * 100, 1)
+        print(f"  Trades     : {trade_count}")
+        print(f"  Wins       : {win_count}")
+        print(f"  Win Rate   : {win_rate}%")
     else:
-        trend = "HOLD"
+        print(f"  No trades yet — monitoring...")
 
-    # RSI filter
-    if trend == "BUY"  and rsi > 75:
-        trend = "HOLD"  # overbought, skip buy
-    if trend == "SELL" and rsi < 25:
-        trend = "HOLD"  # oversold, skip sell
+# ── Main Loop ──
+print("═" * 35)
+print("  SUI EMA 20/50 CROSSOVER BOT")
+print("═" * 35)
+print(f"  Pair       : {PAIR}")
+print(f"  Candles    : 15min x {CANDLE_LIMIT}")
+print(f"  EMA Fast   : 20")
+print(f"  EMA Slow   : 50")
+print(f"  Stop Loss  : {STOP_LOSS_PCT}%")
+print(f"  Take Profit: {TP_PCT}%")
+print(f"  R:R Ratio  : 1:3")
+print(f"  Leverage   : {LEVERAGE}x")
+print("═" * 35)
+print("  Orders COMMENTED — Safe Test!")
+print("═" * 35)
 
-    print(f"EMA Trend   : {trend}")
-    print(f"RSI Filter  : {'BLOCKED' if (trend == 'HOLD' and rsi > 75) or (trend == 'HOLD' and rsi < 25) else 'PASSED'}")
+while True:
+    try:
+        print(f"\n  Time: {time.ctime()}")
 
-    return trend, price
+        signal, price = check_signal()
+        print(f"\n  >>>  SIGNAL : {signal}  <<<\n")
 
+        exit_signal = check_sl_tp(price)
+        print_stats()
+
+        # ── Uncomment ONLY after 5-7 days testing ──
+        # if exit_signal in ["EXIT_LOSS", "EXIT_WIN"]:
+        #     place_order("sell", price)
+        #     in_position = False
+        #     buy_price   = 0.0
+        #
+        # elif signal == "BUY" and not in_position:
+        #     place_order("buy", price)
+        #     in_position = True
+        #     buy_price   = price
+        #     print(f"  Bought at {price}")
+        #
+        # elif signal == "SELL" and in_position:
+        #     place_order("sell", price)
+        #     in_position = False
+        #     buy_price   = 0.0
+        #     print(f"  Sold at {price}")
+
+        time.sleep(INTERVAL)
+
+    except Exception as e:
+        print(f"  Error: {e}")
+        time.sleep(30)
