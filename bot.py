@@ -167,21 +167,22 @@ while True:
 
         exit_sig = check_exit(price)
 
-        # ── Uncomment after 5-7 days testing ──
-        # if exit_sig == "EXIT":
-        #     if place_order("sell", price):
-        #         in_position = False
-        #         buy_price   = 0.0
-        #
-        # elif signal == "BUY" and not in_position:
-        #     if place_order("buy", price):
-        #         in_position = True
-        #         buy_price   = price
-        #
-        # elif signal == "SELL" and in_position:
-        #     if place_order("sell", price):
-        #         in_position = False
-        #         buy_price   = 0.0
+        if exit_sig == "EXIT":
+            if place_order("sell", price):
+                in_position = False
+                buy_price   = 0.0
+
+        elif signal == "BUY" and not in_position:
+            if place_order("buy", price):
+                in_position = True
+                buy_price   = price
+                print(f"  ✅ Bought at {price}")
+
+        elif signal == "SELL" and in_position:
+            if place_order("sell", price):
+                in_position = False
+                buy_price   = 0.0
+                print(f"  ✅ Sold at {price}")
 
         print(" ─────────────────────────────────")
         time.sleep(INTERVAL)
