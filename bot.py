@@ -6,8 +6,8 @@ import time
 import os
 
 # ── API Keys ──
-API_KEY    = os.environ.get("API_KEY", "your_api_key_here")
-API_SECRET = os.environ.get("API_SECRET", "your_secret_here").encode()
+API_KEY    = os.environ.get("API_KEY", "be7077710a52a1fd8568cca583106acd82e2244f7aa7f9af")
+API_SECRET = os.environ.get("API_SECRET", "9166de9ff3ddc3454ca8fe1f1acc5649b8feefcf3d552d6e6b64e40d87642e1d").encode()
 
 # ── Settings ──
 PAIR          = "B-SUI_USDT"
